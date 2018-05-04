@@ -144,44 +144,7 @@ build_openssl () {
   for arch in "${BUILD_ARCHS[@]}"; do
 
     # inspired by ./build-all-arch.sh in android-openssl
-    case "${arch}" in
-      "arm")
-        xarch="armeabi"
-        export _ANDROID_TARGET_SELECT="arch-arm"
-        export _ANDROID_ARCH="arch-arm"
-        export _ANDROID_EABI="arm-linux-androideabi-4.9"
-        export _ANDROID_EABI_INC="arm-linux-androideabi"
-        configure_platform="android-armv7"
-        ;;
-      "arm64")
-        xarch="arm64-v8a"
-        export _ANDROID_TARGET_SELECT="arch-arm64-v8a"
-        export _ANDROID_ARCH="arch-arm64"
-        export _ANDROID_EABI="aarch64-linux-android-4.9"
-        export _ANDROID_EABI_INC="aarch64-linux-android"
-        configure_platform="linux-generic64 -DB_ENDIAN"
-        ;;
-      "x86")
-        xarch="x86"
-        export _ANDROID_TARGET_SELECT="arch-x86"
-        export _ANDROID_ARCH="arch-x86"
-        export _ANDROID_EABI="x86-4.9"
-        export _ANDROID_EABI_INC="i686-linux-android"
-        configure_platform="android-x86"
-        ;;
-      "x86_64")
-        xarch="x86_64"
-        export _ANDROID_TARGET_SELECT="arch-x86_64"
-        export _ANDROID_ARCH="arch-x86_64"
-        export _ANDROID_EABI="x86_64-4.9"
-        export _ANDROID_EABI_INC="x86_64-linux-android"
-        xLIB="/lib64"
-        configure_platform="linux-generic64"
-        ;;
-      *)
-        die "unknown arch ${arch}"
-        ;;
-    esac
+    arch_exports "${arch}"
 
     # shellcheck disable=SC1091
     source ./setenv-android-mod.sh
@@ -255,6 +218,8 @@ build_openssl () {
         || die "could not install openssl ${arch}"
     fi
     popd # openssl-${VERSION}
+
+    clean_archives "${ARTIFACT_ROOT}/openssl/${arch}/lib"
   done
   popd # /var/src/android-openssl
   popd # /var/src
@@ -283,26 +248,8 @@ build_boost() {
 
   # Then build & install to ${ARTIFACT_ROOT}/boost/${arch}
   for arch in "${BUILD_ARCHS[@]}"; do
-    case "${arch}" in
-      "arm")
-        target_host="arm-linux-androideabi"
-        ;;
-      "arm64")
-        target_host="aarch64-linux-android"
-        xarch="armv8-a"
-        ;;
-      "x86")
-        target_host="i686-linux-android"
-        xarch="i686"
-        ;;
-      "x86_64")
-        target_host="x86_64-linux-android"
-        xarch="x86-64"
-        ;;
-      *)
-        die "unknown arch ${arch}"
-        ;;
-    esac
+    arch_exports "${arch}"
+
     PATH="/opt/android/tool/${arch}/${target_host}/bin:/opt/android/tool/${arch}/bin:${PATH}" \
     ./b2 --build-type=minimal link=static runtime-link=static \
       --with-chrono \
@@ -319,6 +266,8 @@ build_boost() {
       --includedir="${ARTIFACT_ROOT}/boost/${arch}/include" \
       toolset=clang threading=multi threadapi=pthread target-os=android \
       install
+
+    clean_archives "${ARTIFACT_ROOT}/boost/${arch}/lib"
   done
 
   popd # BOOST_DIR
@@ -346,33 +295,7 @@ build_monero() {
   git status
 
   for arch in "${BUILD_ARCHS[@]}"; do
-    export ldflags=""
-    case "${arch}" in
-      "arm")
-        target_host="arm-linux-androideabi"
-        export ldflags="-march=armv7-a -Wl,--fix-cortex-a8"
-        xarch="armv7-a"
-        sixtyfour=OFF
-        ;;
-      "arm64")
-        target_host="aarch64-linux-android"
-        xarch="armv8-a"
-        sixtyfour=ON
-        ;;
-      "x86")
-        target_host="i686-linux-android"
-        xarch="i686"
-        sixtyfour=OFF
-        ;;
-      "x86_64")
-        target_host="x86_64-linux-android"
-        xarch="x86-64"
-        sixtyfour=ON
-        ;;
-      *)
-        die "unknown arch ${arch}"
-        ;;
-    esac
+    arch_exports "${arch}"
 
     # patch CMakefile to downgrade error:
     # error: the specified comparator type does not provide a const call operator
@@ -382,7 +305,7 @@ build_monero() {
        s|set(WARNINGS_AS_ERRORS_FLAG "-Werror")||' \
       CMakeLists.txt
 
-    OUTPUT_DIR="build/${BUILD_TYPE}.${arch}"
+    OUTPUT_DIR="${BUILD_ROOT}/monero/build/${BUILD_TYPE}.${arch}"
     mkdir -p "${OUTPUT_DIR}"
     pushd "${OUTPUT_DIR}"
 
@@ -394,26 +317,31 @@ build_monero() {
       -D CMAKE_BUILD_TYPE="${BUILD_TYPE}" -D ANDROID=true \
       -D BUILD_TAG="android" \
       -D BOOST_ROOT="${ARTIFACT_ROOT}/boost/${arch}" \
-      -D OPENSSL_INCLUDE_DIR="${ARTIFACT_ROOT}/openssl/${arch}/include" \
       -D OPENSSL_ROOT_DIR="${ARTIFACT_ROOT}/openssl/${arch}" \
       -D CMAKE_POSITION_INDEPENDENT_CODE:BOOL=true \
       ../.. \
       || die "could not configure monero"
     make wallet_api -j4 \
       || die "could not build wallet api"
-    #??
+
+    # "install" all libs from the source-tree to the build-lib directory
     find . -path ./lib -prune -o -name '*.a' -exec cp '{}' lib \;
 
+    # "install" all libs to the artifacts
     TARGET_LIB_DIR="${ARTIFACT_ROOT}/monero/${arch}/lib"
     rm -rf "${TARGET_LIB_DIR}"
     mkdir -p "${TARGET_LIB_DIR}"
-    cp "${OUTPUT_DIR}/lib/*.a" "${TARGET_LIB_DIR}"
+    cp "${OUTPUT_DIR}/lib/"*.a "${TARGET_LIB_DIR}" \
+      || die "could not copy *.a files to artifacts ${arch}"
 
     TARGET_INC_DIR="${ARTIFACT_ROOT}/monero/include"
     rm -rf "${TARGET_INC_DIR}"
     mkdir -p "${TARGET_INC_DIR}"
-    cp -a ../src/wallet/api/wallet2_api.h "${TARGET_INC_DIR}"
+    cp -a ../../src/wallet/api/wallet2_api.h "${TARGET_INC_DIR}" \
+      || die "could not copy wallet2_api.h files to artifacts ${arch}"
     popd # OUTPUT_DIR
+
+    clean_archives "${ARTIFACT_ROOT}/monero/${arch}/lib"
   done
   popd # monero
   popd # /var/src/monero
@@ -438,30 +366,15 @@ apk() {
 
   # collect from artifacts
   for arch in "${BUILD_ARCHS[@]}"; do
-    case ${arch} in
-      "arm")
-        xarch="armeabi-v7a"
-        ;;
-      "arm64")
-        xarch="arm64-v8a"
-        ;;
-      "x86")
-        xarch="x86"
-        ;;
-      "x86_64")
-        xarch="x86_64"
-        ;;
-      *)
-        die "unknown arch ${arch}"
-        ;;
-    esac
+    arch_exports "${arch}"
+
     for package in "${BUILD_PACKAGES[@]}"; do
-      OUTPUT_DIR="external-libs/${package}/lib/${xarch}"
+      OUTPUT_DIR="${APK_ROOT}/external-libs/${package}/lib/${apk_xarch}"
       mkdir -p "${OUTPUT_DIR}"
       cp -a "${ARTIFACT_ROOT}/${package}/${arch}/lib/*.a" "${OUTPUT_DIR}"
       local package_include_dir="${ARTIFACT_ROOT}/${package}/${arch}/include"
       if [ "${package}" = "monero" ] && [ -d "${package_include_dir}" ]; then
-        cp -a "${package_include_dir}" "external-libs/${package}"
+        cp -a "${package_include_dir}" "${APK_ROOT}/external-libs/${package}"
       fi
     done
   done
@@ -477,6 +390,78 @@ apk() {
 
   # copy it to ${ARTIFACT_ROOT}/apk/
   popd # APK_ROOT
+}
+
+clean_archives() {
+  # Static libraries (.a) on Unix-like systems are ar archives. Like other
+  # archive formats, they contain metadata, namely timestamps, UIDs, GIDs,
+  # and permissions. None are actually required for using them as libraries.
+  pushd "$1"
+  for archive in *.a; do
+    PATH="/opt/android/tool/${arch}/${target_host}/bin" \
+      objcopy --enable-deterministic-archives "${archive}"
+  done
+  popd # "path"
+}
+
+arch_exports() {
+  export ldflags=""
+  export xLIB=""
+  case "$1" in
+    "arm")
+      export target_host="arm-linux-androideabi"
+      export ldflags="-march=armv7-a -Wl,--fix-cortex-a8"
+      export xarch="armv7-a"
+      export sixtyfour=OFF
+      #export android_xarch="armeabi"
+      export apk_xarch="armeabi-v7a"
+      export _ANDROID_TARGET_SELECT="arch-arm"
+      export _ANDROID_ARCH="arch-arm"
+      export _ANDROID_EABI="arm-linux-androideabi-4.9"
+      export _ANDROID_EABI_INC="arm-linux-androideabi"
+      export configure_platform="android-armv7"
+      ;;
+    "arm64")
+      export target_host="aarch64-linux-android"
+      export xarch="armv8-a"
+      export sixtyfour=ON
+      #export android_xarch="arm64-v8a"
+      export apk_xarch="arm64-v8a"
+      export _ANDROID_TARGET_SELECT="arch-arm64-v8a"
+      export _ANDROID_ARCH="arch-arm64"
+      export _ANDROID_EABI="aarch64-linux-android-4.9"
+      export _ANDROID_EABI_INC="aarch64-linux-android"
+      export configure_platform="linux-generic64 -DB_ENDIAN"
+      ;;
+    "x86")
+      export target_host="i686-linux-android"
+      export xarch="i686"
+      export sixtyfour=OFF
+      # export android_xarch="x86"
+      export apk_xarch="x86"
+      export _ANDROID_TARGET_SELECT="arch-x86"
+      export _ANDROID_ARCH="arch-x86"
+      export _ANDROID_EABI="x86-4.9"
+      export _ANDROID_EABI_INC="i686-linux-android"
+      export configure_platform="android-x86"
+      ;;
+    "x86_64")
+      export target_host="x86_64-linux-android"
+      export xarch="x86-64"
+      export sixtyfour=ON
+      # export android_xarch="x86_64"
+      export apk_xarch="x86_64"
+      export _ANDROID_TARGET_SELECT="arch-x86_64"
+      export _ANDROID_ARCH="arch-x86_64"
+      export _ANDROID_EABI="x86_64-4.9"
+      export _ANDROID_EABI_INC="x86_64-linux-android"
+      export xLIB="/lib64"
+      export configure_platform="linux-generic64"
+      ;;
+    *)
+      die "unknown arch ${arch}"
+      ;;
+  esac
 }
 
 usage() {
