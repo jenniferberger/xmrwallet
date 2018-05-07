@@ -27,7 +27,7 @@ RUN apt-get update \
     autoconf \
     build-essential cmake tofrodos \
     wget unzip python \
-    default-jre-headless
+    openjdk-8-jdk
 
 # install android ndk
 RUN mkdir /opt/android \
