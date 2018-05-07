@@ -371,7 +371,7 @@ apk() {
     for package in "${BUILD_PACKAGES[@]}"; do
       OUTPUT_DIR="${APK_ROOT}/external-libs/${package}/lib/${apk_xarch}"
       mkdir -p "${OUTPUT_DIR}"
-      cp -a "${ARTIFACT_ROOT}/${package}/${arch}/lib/*.a" "${OUTPUT_DIR}"
+      cp -a "${ARTIFACT_ROOT}/${package}/${arch}/lib/"*.a "${OUTPUT_DIR}"
       local package_include_dir="${ARTIFACT_ROOT}/${package}/${arch}/include"
       if [ "${package}" = "monero" ] && [ -d "${package_include_dir}" ]; then
         cp -a "${package_include_dir}" "${APK_ROOT}/external-libs/${package}"
