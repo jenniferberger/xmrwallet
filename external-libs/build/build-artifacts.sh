@@ -379,7 +379,7 @@ apk() {
     done
   done
 
-  PATH="/opt/gradle/bin" \
+  PATH="/opt/gradle/bin:$PATH" \
   gradle build \
     || die "could not build apk"
 
