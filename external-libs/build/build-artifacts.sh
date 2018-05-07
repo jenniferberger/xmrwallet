@@ -21,6 +21,7 @@ PACKAGE_DIR=${PACKAGE_DIR:-${ARTIFACT_ROOT}/package}
 
 NDK=${NDK:-android-ndk-r16b}
 export ANDROID_NDK_ROOT=/opt/android/${NDK}
+export ANDROID_SDK_ROOT=/opt/android/sdk
 
 
 BOOST_VERSION=${BOOST_VERSION:-1.58.0}
@@ -379,16 +380,17 @@ apk() {
     done
   done
 
+  # setup sdk and ndk directory
+  echo "ndk.dir=${ANDROID_NDK_ROOT}" > local.properties
+  echo "sdk.dir=${ANDROID_SDK_ROOT}" >> local.properties
+
   PATH="/opt/gradle/bin:$PATH" \
   gradle build \
     || die "could not build apk"
 
-  ## XXXX not here yet
-  # gradle build is broken - looping to find out where the build is stored
-  # something needs to be installed in the container to avoid
-  #  java.lang.RuntimeException: Unexpected error: java.security.InvalidAlgorithmParameterException: the trustAnchors parameter must be non-empty
-
   # copy it to ${ARTIFACT_ROOT}/apk/
+  cp -r "${APK_ROOT}/app/build/outputs/apk/" "${ARTIFACT_ROOT}/apk"
+
   popd # APK_ROOT
 }
 

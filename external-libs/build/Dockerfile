@@ -7,6 +7,8 @@ MAINTAINER miner2049er@women-at-work.org
 ENV NDK=android-ndk-r16b
 ENV NDK_FILE=${NDK}-linux-x86_64.zip
 ENV NDK_SUM=bcdea4f5353773b2ffa85b5a9a2ae35544ce88ec5b507301d8cf6a76b765d901
+ENV SDK_TOOL_FILE=sdk-tools-linux-3859397.zip
+ENV SDK_TOOL_SUM=444e22ce8ca0f67353bda4b85175ed3731cae3ffa695ca18119cbacef1c1bea0
 ENV GRADLE_VERSION=4.7
 ENV GRADLE_FILE=gradle-${GRADLE_VERSION}-bin.zip
 ENV GRADLE_SUM=fca5087dc8b50c64655c000989635664a73b11b9bd3703c7d6cabd31b7dcdb04
@@ -48,6 +50,18 @@ RUN cd /opt/android \
     --api 21 --stl=libc++ --arch x86 --install-dir /opt/android/tool/x86 \
  && /opt/android/${NDK}/build/tools/make_standalone_toolchain.py \
     --api 21 --stl=libc++ --arch x86_64 --install-dir /opt/android/tool/x86_64
+
+# install android sdk CLI tool
+RUN mkdir /opt/android/sdk \
+ && cd /opt/android/sdk \
+ && wget https://dl.google.com/android/repository/${SDK_TOOL_FILE} \
+ && echo "${SDK_TOOL_SUM}  ${SDK_TOOL_FILE}" > /tmp/sdk_tool_sum_signed \
+ && sha256sum -c /tmp/sdk_tool_sum_signed \
+ && unzip "${SDK_TOOL_FILE}" \
+ && rm -rf "${SDK_TOOL_FILE}"
+
+# accept sdk license
+RUN yes | /opt/android/sdk/tools/bin/sdkmanager --licenses
 
 # install recent gradle
 RUN cd /opt/ \
